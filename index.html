@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TCG Espacial</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <style>
+        :root {
+            --bg-deep-space: #07080a;
+            --panel-bg: #11151c;
+            --neon-blue: #00d2ff;
+            --neon-pink: #ff007f;
+            --border-glow: rgba(0, 210, 255, 0.5);
+            --text-light: #e0e6ed;
+            --sector-hover: rgba(0, 210, 255, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            /* Essencial para mobile: evita que o toque faça a tela dar "scroll" enquanto arrasta */
+            touch-action: none; 
+        }
+
+        body {
+            background-color: var(--bg-deep-space);
+            background-image: radial-gradient(circle at 50% 0%, #1a1a2e 0%, transparent 70%);
+            color: var(--text-light);
+            font-family: 'Segoe UI', Roboto, Helvetica, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            padding: 12px;
+            background: linear-gradient(180deg, #11151c, transparent);
+            border-bottom: 1px solid var(--neon-blue);
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--neon-blue);
+            box-shadow: 0 0 10px var(--border-glow);
+            z-index: 10;
+        }
+
+        #board {
+            flex-grow: 1;
+            display: flex;
+            padding: 15px 10px;
+            gap: 10px;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .sector {
+            flex: 1;
+            background-color: var(--panel-bg);
+            border: 1px solid #2a3441;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            position: relative;
+            transition: all 0.2s ease;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+            gap: 8px; /* Espaço entre as cartas jogadas aqui */
+        }
+
+        .sector.drag-over {
+            border-color: var(--neon-blue);
+            background-color: var(--sector-hover);
+            box-shadow: 0 0 15px var(--border-glow);
+        }
+
+        .sector-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 10px;
+            width: 100%;
+            text-align: center;
+            border-bottom: 1px solid #2a3441;
+            padding-bottom: 5px;
+        }
+
+        #player-hand {
+            height: 160px;
+            background: linear-gradient(0deg, #050508, #11151c);
+            border-top: 2px solid var(--neon-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center; /* Centraliza as cartas */
+            padding: 10px;
+            gap: -15px; /* Sobrepõe as cartas levemente */
+            z-index: 5;
+            box-shadow: 0 -5px 20px rgba(255, 0, 127, 0.2);
+        }
+
+        .card {
+            width: 85px;
+            height: 125px;
+            background: linear-gradient(135deg, #1f2232, #0d0f16);
+            border: 1px solid #3a4454;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 8px;
+            cursor: grab;
+            transition: transform 0.1s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            /* Importante para sobreposição na mão */
+            margin: 0 4px;
+            position: relative; 
+        }
+
+        .card:active {
+            cursor: grabbing;
+        }
+
+        /* Classe aplicada quando a carta está sendo arrastada */
+        .card.dragging {
+            position: absolute; /* Sai do fluxo normal para seguir o dedo */
+            z-index: 1000;
+            box-shadow: 0 10px 25px rgba(0, 210, 255, 0.5);
+            border-color: var(--neon-blue);
+            transform: scale(1.05) rotate(-2deg); /* Dá um efeito 3D ao segurar */
+            opacity: 0.9;
+        }
+
+        /* Quando a carta é jogada na mesa, ela muda um pouco */
+        .sector .card {
+            width: 100%; /* Adapta ao tamanho do setor */
+            height: 90px;
+            margin: 0;
+            cursor: default; /* Não pode mais arrastar (por enquanto) */
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .card-cost {
+            color: #f1c40f;
+            text-shadow: 0 0 5px rgba(241, 196, 15, 0.5);
+        }
+
+        .card-name {
+            font-size: 11px;
+            text-align: center;
+            color: white;
+            line-height: 1.1;
+        }
+
+        .card-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .stat-atk { color: #ff4757; text-shadow: 0 0 5px rgba(255, 71, 87, 0.5); }
+        .stat-def { color: #1e90ff; text-shadow: 0 0 5px rgba(30, 144, 255, 0.5); }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div id="player-info">Comandante</div>
+        <div id="turn-info">Turno 1</div>
+        <div id="energy-info">⚡ 1/1</div>
+    </header>
+
+    <div id="board">
+        <div class="sector" id="sector-alpha">
+            <div class="sector-title">Alpha</div>
+        </div>
+        <div class="sector" id="sector-nebula">
+            <div class="sector-title">Nebula</div>
+        </div>
+        <div class="sector" id="sector-omega">
+            <div class="sector-title">Ômega</div>
+        </div>
+    </div>
+
+    <div id="player-hand">
+        <!-- Cartas injetadas via JS -->
+    </div>
+
+    <script>
+        const tg = window.Telegram?.WebApp;
+        if(tg) {
+            tg.expand();
+            const playerName = tg.initDataUnsafe?.user?.first_name || "Comandante";
+            document.getElementById('player-info').innerText = `🧑‍🚀 ${playerName}`;
+        }
+
+        const initialCards = [
+            { id: 'c1', name: "Interceptor", cost: 1, atk: 2, def: 1 },
+            { id: 'c2', name: "Muralha de Íons", cost: 1, atk: 0, def: 4 },
+            { id: 'c3', name: "Cruzador Leve", cost: 2, atk: 3, def: 2 }
+        ];
+
+        let draggedCard = null;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        function createCardElement(cardData) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.id = cardData.id;
+            
+            card.innerHTML = `
+                <div class="card-header">
+                    <span></span>
+                    <span class="card-cost">${cardData.cost}⚡</span>
+                </div>
+                <div class="card-name">${cardData.name}</div>
+                <div class="card-stats">
+                    <span class="stat-atk">⚔️${cardData.atk}</span>
+                    <span class="stat-def">🛡️${cardData.def}</span>
+                </div>
+            `;
+
+            // Adiciona os eventos de toque (Pointer Events) na carta
+            card.addEventListener('pointerdown', handlePointerDown);
+
+            return card;
+        }
+
+        function initGame() {
+            const hand = document.getElementById('player-hand');
+            initialCards.forEach(data => {
+                hand.appendChild(createCardElement(data));
+            });
+        }
+
+        function handlePointerDown(e) {
+            // Se a carta já estiver no tabuleiro, não permite arrastar novamente (regra de jogo)
+            if (this.parentElement.classList.contains('sector')) return;
+
+            draggedCard = this;
+            
+            // Calcula onde exatamente o usuário tocou dentro da carta
+            const rect = draggedCard.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+
+            // Prepara a carta para flutuar livremente pela tela
+            draggedCard.classList.add('dragging');
+            draggedCard.style.left = `${e.clientX - offsetX}px`;
+            draggedCard.style.top = `${e.clientY - offsetY}px`;
+            
+            // Move a carta para o body temporariamente para não sofrer cortes (overflow)
+            document.body.appendChild(draggedCard);
+
+            // Se no Telegram, emite uma vibração suave (Haptic Feedback)
+            if(tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+        }
+
+        document.addEventListener('pointermove', (e) => {
+            if (!draggedCard) return;
+
+            // Atualiza a posição da carta seguindo o dedo/mouse
+            draggedCard.style.left = `${e.clientX - offsetX}px`;
+            draggedCard.style.top = `${e.clientY - offsetY}px`;
+
+            // Verifica em qual setor estamos passando por cima para dar feedback visual
+            const sectors = document.querySelectorAll('.sector');
+            sectors.forEach(s => s.classList.remove('drag-over')); // Limpa destaques anteriores
+
+            // Esconde a carta rapidamente para ver o elemento que está por baixo dela
+            draggedCard.style.visibility = 'hidden'; 
+            const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+            draggedCard.style.visibility = 'visible';
+
+            if (elemBelow) {
+                const sectorBelow = elemBelow.closest('.sector');
+                if (sectorBelow) {
+                    sectorBelow.classList.add('drag-over');
+                }
+            }
+        });
+
+        document.addEventListener('pointerup', (e) => {
+            if (!draggedCard) return;
+
+            // Remove os visuais de "arrastando" e do brilho nos setores
+            draggedCard.classList.remove('dragging');
+            document.querySelectorAll('.sector').forEach(s => s.classList.remove('drag-over'));
+
+            // Limpa as posições absolutas da carta
+            draggedCard.style.left = '';
+            draggedCard.style.top = '';
+
+            // Descobre o que estava embaixo do dedo na hora que soltou
+            draggedCard.style.visibility = 'hidden';
+            const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+            draggedCard.style.visibility = 'visible';
+
+            let validDrop = false;
+
+            if (elemBelow) {
+                const sectorBelow = elemBelow.closest('.sector');
+                // Se soltou em cima de uma rota, anexa a carta nela
+                if (sectorBelow) {
+                    sectorBelow.appendChild(draggedCard);
+                    validDrop = true;
+                    if(tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+                }
+            }
+
+            // Se não soltou numa rota válida, devolve para a mão do jogador
+            if (!validDrop) {
+                document.getElementById('player-hand').appendChild(draggedCard);
+                if(tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+            }
+
+            draggedCard = null;
+        });
+
+        initGame();
+        if(tg) tg.ready();
+    </script>
+</body>
+</html>
