@@ -25,6 +25,30 @@
             flex-direction: column;
             height: 100vh;
             overflow: hidden;
+            position: relative;
+        }
+
+        /* Tela de Game Over */
+        #game-over-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(11, 12, 16, 0.95);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        #game-over-screen h1 {
+            color: var(--accent);
+            margin-bottom: 20px;
+            font-size: 2.5em;
+            text-transform: uppercase;
+        }
+        #game-over-screen.derrota h1 { color: var(--enemy-color); }
+        #game-over-screen button {
+            font-size: 1.2em;
+            padding: 15px 30px;
         }
 
         .status-bar {
@@ -149,18 +173,18 @@
 </head>
 <body>
 
+    <!-- Overlay de Game Over -->
+    <div id="game-over-screen">
+        <h1 id="game-over-title">Vitória!</h1>
+        <button onclick="reiniciarJogo()">Jogar Novamente</button>
+    </div>
+
     <div class="status-bar enemy">
         <span>Inimigo (HP: <span id="hp-inimigo">20</span>)</span>
     </div>
 
     <div class="board enemy" id="enemy-board">
-        <div class="rota" data-rota="alpha"><span class="rota-label">ALPHA</span>
-            <div class="carta enemy" data-ataque="2" data-vida="3">
-                <div class="carta-custo">1</div>
-                <div class="carta-nome">Drone Corsário</div>
-                <div class="stats"><span>⚔️2</span><span>🛡️3</span></div>
-            </div>
-        </div>
+        <div class="rota" data-rota="alpha"><span class="rota-label">ALPHA</span></div>
         <div class="rota" data-rota="nebula"><span class="rota-label">NEBULA</span></div>
         <div class="rota" data-rota="omega"><span class="rota-label">ÔMEGA</span></div>
     </div>
@@ -173,14 +197,7 @@
 
     <div class="deck-info">Deck: <span id="deck-count">0</span></div>
 
-    <div class="mao" id="mao-jogador">
-        <!-- Cartas iniciais -->
-        <div class="carta" data-custo="1" data-ataque="1" data-vida="2">
-            <div class="carta-custo">1</div>
-            <div class="carta-nome">Caça Leve</div>
-            <div class="stats"><span>⚔️1</span><span>🛡️2</span></div>
-        </div>
-    </div>
+    <div class="mao" id="mao-jogador"></div>
 
     <div class="status-bar">
         <span>Você (HP: <span id="hp-jogador">20</span>)</span>
@@ -194,31 +211,25 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        let turno = 1;
-        let energiaMax = 1;
-        let energiaAtual = 1;
-        let hpJogador = 20;
-        let hpInimigo = 20;
-
+        let turno, energiaMax, energiaAtual, hpJogador, hpInimigo;
         let cartaArrastada = null;
         let posInicial = { x: 0, y: 0, parent: null, nextSibling: null };
         let offset = { x: 0, y: 0 };
+        let baralho = [];
 
-        const rotas = document.querySelectorAll('#player-board .rota');
+        const rotas = document.querySelectorAll('.rota');
         const maoJogador = document.getElementById('mao-jogador');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const gameOverTitle = document.getElementById('game-over-title');
 
-        // Nosso baralho de testes (pode adicionar quantas quiser)
-        let baralho = [
-            { custo: 2, ataque: 3, vida: 1, nome: "Bombardeiro" },
+        const baseDeck = [
+            { custo: 1, ataque: 1, vida: 2, nome: "Caça Leve" },
             { custo: 1, ataque: 2, vida: 1, nome: "Interceptor" },
+            { custo: 2, ataque: 3, vida: 1, nome: "Bombardeiro" },
+            { custo: 2, ataque: 1, vida: 3, nome: "Sonda" },
             { custo: 3, ataque: 2, vida: 5, nome: "Nave Escudo" },
-            { custo: 4, ataque: 5, vida: 4, nome: "Cruzador" },
-            { custo: 2, ataque: 1, vida: 3, nome: "Sonda de Reparo" }
+            { custo: 4, ataque: 5, vida: 4, nome: "Cruzador" }
         ];
-
-        // Embaralha o deck no início
-        baralho = baralho.sort(() => Math.random() - 0.5);
-        document.getElementById('deck-count').innerText = baralho.length;
 
         function atualizarHUD() {
             document.getElementById('energia-ui').innerText = `${energiaAtual}/${energiaMax}`;
@@ -227,14 +238,10 @@
             document.getElementById('hp-inimigo').innerText = hpInimigo;
             document.getElementById('deck-count').innerText = baralho.length;
 
-            const cartasNaMao = document.querySelectorAll('#mao-jogador .carta');
-            cartasNaMao.forEach(carta => {
+            document.querySelectorAll('#mao-jogador .carta').forEach(carta => {
                 const custo = parseInt(carta.dataset.custo);
-                if (custo > energiaAtual) {
-                    carta.classList.add('disabled');
-                } else {
-                    carta.classList.remove('disabled');
-                }
+                if (custo > energiaAtual) carta.classList.add('disabled');
+                else carta.classList.remove('disabled');
             });
         }
 
@@ -247,16 +254,11 @@
             }, 300);
         }
 
-        // Função para sacar carta do deck
         function sacarCarta() {
-            if (baralho.length === 0) return; // Sem cartas no deck
-            
-            const cartasNaMao = document.querySelectorAll('#mao-jogador .carta').length;
-            if (cartasNaMao >= 5) return; // Limite de 5 cartas na mão
+            if (baralho.length === 0) return;
+            if (document.querySelectorAll('#mao-jogador .carta').length >= 5) return;
 
             const dadosCarta = baralho.pop();
-            
-            // Criando a estrutura HTML da nova carta
             const novaCarta = document.createElement('div');
             novaCarta.className = 'carta';
             novaCarta.dataset.custo = dadosCarta.custo;
@@ -271,6 +273,56 @@
             
             adicionarEventosArrastar(novaCarta);
             maoJogador.appendChild(novaCarta);
+        }
+
+        function criarInimigoTeste() {
+            const rotaAlfa = document.querySelector('#enemy-board .rota[data-rota="alpha"]');
+            rotaAlfa.innerHTML = `<span class="rota-label">ALPHA</span>
+                <div class="carta enemy" data-ataque="2" data-vida="3">
+                    <div class="carta-custo">1</div>
+                    <div class="carta-nome">Drone Corsário</div>
+                    <div class="stats"><span>⚔️2</span><span>🛡️3</span></div>
+                </div>`;
+        }
+
+        window.reiniciarJogo = function() {
+            turno = 1;
+            energiaMax = 1;
+            energiaAtual = 1;
+            hpJogador = 20;
+            hpInimigo = 20;
+
+            // Limpa o tabuleiro
+            document.querySelectorAll('.rota').forEach(rota => {
+                const label = rota.querySelector('.rota-label').outerHTML;
+                rota.innerHTML = label; 
+            });
+            maoJogador.innerHTML = '';
+            gameOverScreen.style.display = 'none';
+            gameOverScreen.classList.remove('derrota');
+
+            criarInimigoTeste();
+
+            // Embaralha o deck clonado
+            baralho = [...baseDeck, ...baseDeck].sort(() => Math.random() - 0.5); // Duplicamos as cartas base para ter 12 no deck
+
+            sacarCarta();
+            sacarCarta();
+            sacarCarta();
+            
+            atualizarHUD();
+        };
+
+        function finalizarJogo(resultado) {
+            gameOverScreen.style.display = 'flex';
+            if (resultado === 'derrota') {
+                gameOverTitle.innerText = "Base Destruída";
+                gameOverScreen.classList.add('derrota');
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+            } else {
+                gameOverTitle.innerText = "Setor Dominado";
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+            }
         }
 
         window.finalizarTurno = function() {
@@ -292,7 +344,7 @@
 
                     cartaJog.dataset.vida = hpJog;
                     cartaIni.dataset.vida = hpIni;
-                    cartaJog.querySelector('.stats').innerHTML = `<span>⚔️️${cartaJog.dataset.ataque}</span><span>🛡️${hpJog}</span>`;
+                    cartaJog.querySelector('.stats').innerHTML = `<span>⚔${cartaJog.dataset.ataque}</span><span>🛡️${hpJog}</span>`;
                     cartaIni.querySelector('.stats').innerHTML = `<span>⚔️${cartaIni.dataset.ataque}</span><span>🛡️${hpIni}</span>`;
 
                     if(hpJog <= 0) setTimeout(() => cartaJog.remove(), 400);
@@ -307,22 +359,25 @@
                 }
             });
 
-            // Verifica vitória/derrota rápida
-            if (hpJogador <= 0) alert("Você perdeu! A base foi destruída.");
-            if (hpInimigo <= 0) alert("Vitória! Base inimiga destruída.");
+            if (hpJogador <= 0) {
+                setTimeout(() => finalizarJogo('derrota'), 500);
+                return;
+            }
+            if (hpInimigo <= 0) {
+                setTimeout(() => finalizarJogo('vitoria'), 500);
+                return;
+            }
 
-            // Novo Turno
             turno++;
             energiaMax = Math.min(turno, 6);
             energiaAtual = energiaMax;
             
-            sacarCarta(); // Puxa uma carta nova no início do turno
+            sacarCarta();
             atualizarHUD();
             
             if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
         };
 
-        // Extraí a lógica de toque para poder plugar nas novas cartas criadas
         function adicionarEventosArrastar(carta) {
             carta.addEventListener('pointerdown', (e) => {
                 if (carta.classList.contains('disabled')) return;
@@ -345,9 +400,6 @@
             });
         }
 
-        // Aplica o evento na carta inicial que já está no HTML
-        document.querySelectorAll('#mao-jogador .carta').forEach(adicionarEventosArrastar);
-
         document.addEventListener('pointermove', (e) => {
             if (!cartaArrastada) return;
             e.preventDefault();
@@ -357,7 +409,7 @@
 
             rotas.forEach(rota => {
                 const rect = rota.getBoundingClientRect();
-                if (e.clientX > rect.left && e.clientX < rect.right && e.clientY > rect.top && e.clientY < rect.bottom) {
+                if (e.clientX > rect.left && e.clientX < rect.right && e.clientY > rect.top && e.clientY < rect.bottom && rota.closest('#player-board')) {
                     rota.classList.add('highlight');
                 } else {
                     rota.classList.remove('highlight');
@@ -370,7 +422,7 @@
 
             let soltouNaRota = false;
             
-            rotas.forEach(rota => {
+            document.querySelectorAll('#player-board .rota').forEach(rota => {
                 rota.classList.remove('highlight');
                 const rect = rota.getBoundingClientRect();
                 
@@ -406,8 +458,8 @@
             cartaArrastada = null;
         });
 
-        // Setup inicial
-        atualizarHUD();
+        // Inicializa o jogo ao carregar
+        reiniciarJogo();
     </script>
 </body>
 </html>
