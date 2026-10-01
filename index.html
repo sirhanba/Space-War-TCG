@@ -27,7 +27,6 @@
             overflow: hidden;
         }
 
-        /* Status das Bases */
         .status-bar {
             display: flex;
             justify-content: space-between;
@@ -38,7 +37,6 @@
         }
         .status-bar.enemy { border-bottom: none; border-top: 1px solid var(--enemy-color); color: var(--enemy-color); }
 
-        /* Tabuleiros */
         .board {
             display: flex;
             justify-content: space-around;
@@ -62,10 +60,9 @@
         .rota.highlight { background-color: rgba(102, 252, 241, 0.1); border-color: var(--accent); }
         .rota-label { position: absolute; opacity: 0.3; font-size: 0.8em; z-index: 0; }
 
-        /* Cartas */
         .carta {
-            width: 80px;
-            height: 110px;
+            width: 75px;
+            height: 105px;
             background: var(--panel-bg);
             border: 1px solid var(--accent);
             border-radius: 6px;
@@ -102,7 +99,7 @@
             align-self: flex-start;
         }
         .carta.enemy .carta-custo { background: var(--enemy-color); }
-        .carta-nome { font-size: 0.65em; text-align: center; margin-top: 5px; flex-grow: 1; }
+        .carta-nome { font-size: 0.6em; text-align: center; margin-top: 5px; flex-grow: 1; word-wrap: break-word; }
         .stats {
             display: flex;
             justify-content: space-between;
@@ -110,14 +107,14 @@
             font-weight: bold;
         }
 
-        /* Mão e Controles */
         .mao {
             display: flex;
             justify-content: center;
-            gap: 10px;
-            padding: 15px 5px;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 10px 5px;
             background: rgba(31, 40, 51, 0.8);
-            min-height: 140px;
+            min-height: 125px;
         }
 
         .controles {
@@ -139,19 +136,25 @@
             font-family: inherit;
         }
         button:active { transform: scale(0.95); }
+        
+        .deck-info {
+            font-size: 0.8em;
+            color: var(--accent-dim);
+            position: absolute;
+            bottom: 60px;
+            left: 10px;
+            z-index: 5;
+        }
     </style>
 </head>
 <body>
 
-    <!-- HUD Inimigo -->
     <div class="status-bar enemy">
         <span>Inimigo (HP: <span id="hp-inimigo">20</span>)</span>
     </div>
 
-    <!-- Tabuleiro Inimigo -->
     <div class="board enemy" id="enemy-board">
         <div class="rota" data-rota="alpha"><span class="rota-label">ALPHA</span>
-            <!-- Carta inimiga de teste -->
             <div class="carta enemy" data-ataque="2" data-vida="3">
                 <div class="carta-custo">1</div>
                 <div class="carta-nome">Drone Corsário</div>
@@ -162,28 +165,23 @@
         <div class="rota" data-rota="omega"><span class="rota-label">ÔMEGA</span></div>
     </div>
 
-    <!-- Tabuleiro do Jogador -->
     <div class="board" id="player-board">
         <div class="rota" data-rota="alpha"><span class="rota-label">ALPHA</span></div>
         <div class="rota" data-rota="nebula"><span class="rota-label">NEBULA</span></div>
         <div class="rota" data-rota="omega"><span class="rota-label">ÔMEGA</span></div>
     </div>
 
-    <!-- Mão do Jogador -->
+    <div class="deck-info">Deck: <span id="deck-count">0</span></div>
+
     <div class="mao" id="mao-jogador">
+        <!-- Cartas iniciais -->
         <div class="carta" data-custo="1" data-ataque="1" data-vida="2">
             <div class="carta-custo">1</div>
             <div class="carta-nome">Caça Leve</div>
             <div class="stats"><span>⚔️1</span><span>🛡️2</span></div>
         </div>
-        <div class="carta" data-custo="2" data-ataque="3" data-vida="1">
-            <div class="carta-custo">2</div>
-            <div class="carta-nome">Bombardeiro</div>
-            <div class="stats"><span>⚔️3</span><span>🛡️1</span></div>
-        </div>
     </div>
 
-    <!-- HUD Jogador e Controles -->
     <div class="status-bar">
         <span>Você (HP: <span id="hp-jogador">20</span>)</span>
     </div>
@@ -203,21 +201,36 @@
         let hpInimigo = 20;
 
         let cartaArrastada = null;
-        let posInicial = { x: 0, y: 0 };
+        let posInicial = { x: 0, y: 0, parent: null, nextSibling: null };
         let offset = { x: 0, y: 0 };
 
         const rotas = document.querySelectorAll('#player-board .rota');
-        const cartas = document.querySelectorAll('#mao-jogador .carta');
+        const maoJogador = document.getElementById('mao-jogador');
+
+        // Nosso baralho de testes (pode adicionar quantas quiser)
+        let baralho = [
+            { custo: 2, ataque: 3, vida: 1, nome: "Bombardeiro" },
+            { custo: 1, ataque: 2, vida: 1, nome: "Interceptor" },
+            { custo: 3, ataque: 2, vida: 5, nome: "Nave Escudo" },
+            { custo: 4, ataque: 5, vida: 4, nome: "Cruzador" },
+            { custo: 2, ataque: 1, vida: 3, nome: "Sonda de Reparo" }
+        ];
+
+        // Embaralha o deck no início
+        baralho = baralho.sort(() => Math.random() - 0.5);
+        document.getElementById('deck-count').innerText = baralho.length;
 
         function atualizarHUD() {
             document.getElementById('energia-ui').innerText = `${energiaAtual}/${energiaMax}`;
             document.getElementById('turno-ui').innerText = turno;
             document.getElementById('hp-jogador').innerText = hpJogador;
             document.getElementById('hp-inimigo').innerText = hpInimigo;
+            document.getElementById('deck-count').innerText = baralho.length;
 
-            cartas.forEach(carta => {
+            const cartasNaMao = document.querySelectorAll('#mao-jogador .carta');
+            cartasNaMao.forEach(carta => {
                 const custo = parseInt(carta.dataset.custo);
-                if (custo > energiaAtual && carta.parentElement.id === 'mao-jogador') {
+                if (custo > energiaAtual) {
                     carta.classList.add('disabled');
                 } else {
                     carta.classList.remove('disabled');
@@ -234,7 +247,32 @@
             }, 300);
         }
 
-        // Lógica de Combate
+        // Função para sacar carta do deck
+        function sacarCarta() {
+            if (baralho.length === 0) return; // Sem cartas no deck
+            
+            const cartasNaMao = document.querySelectorAll('#mao-jogador .carta').length;
+            if (cartasNaMao >= 5) return; // Limite de 5 cartas na mão
+
+            const dadosCarta = baralho.pop();
+            
+            // Criando a estrutura HTML da nova carta
+            const novaCarta = document.createElement('div');
+            novaCarta.className = 'carta';
+            novaCarta.dataset.custo = dadosCarta.custo;
+            novaCarta.dataset.ataque = dadosCarta.ataque;
+            novaCarta.dataset.vida = dadosCarta.vida;
+            
+            novaCarta.innerHTML = `
+                <div class="carta-custo">${dadosCarta.custo}</div>
+                <div class="carta-nome">${dadosCarta.nome}</div>
+                <div class="stats"><span>⚔️${dadosCarta.ataque}</span><span>🛡️${dadosCarta.vida}</span></div>
+            `;
+            
+            adicionarEventosArrastar(novaCarta);
+            maoJogador.appendChild(novaCarta);
+        }
+
         window.finalizarTurno = function() {
             const rotasNomes = ['alpha', 'nebula', 'omega'];
             
@@ -246,7 +284,6 @@
                 const cartaIni = slotInimigo.querySelector('.carta');
 
                 if (cartaJog && cartaIni) {
-                    // Combate entre naves
                     let hpJog = parseInt(cartaJog.dataset.vida) - parseInt(cartaIni.dataset.ataque);
                     let hpIni = parseInt(cartaIni.dataset.vida) - parseInt(cartaJog.dataset.ataque);
                     
@@ -255,33 +292,38 @@
 
                     cartaJog.dataset.vida = hpJog;
                     cartaIni.dataset.vida = hpIni;
-                    cartaJog.querySelector('.stats').innerHTML = `<span>⚔${cartaJog.dataset.ataque}</span><span>🛡️${hpJog}</span>`;
+                    cartaJog.querySelector('.stats').innerHTML = `<span>⚔️️${cartaJog.dataset.ataque}</span><span>🛡️${hpJog}</span>`;
                     cartaIni.querySelector('.stats').innerHTML = `<span>⚔️${cartaIni.dataset.ataque}</span><span>🛡️${hpIni}</span>`;
 
                     if(hpJog <= 0) setTimeout(() => cartaJog.remove(), 400);
                     if(hpIni <= 0) setTimeout(() => cartaIni.remove(), 400);
 
                 } else if (cartaJog && !cartaIni) {
-                    // Dano na base inimiga
                     hpInimigo -= parseInt(cartaJog.dataset.ataque);
                     animarDano(slotInimigo);
                 } else if (!cartaJog && cartaIni) {
-                    // Dano na nossa base
                     hpJogador -= parseInt(cartaIni.dataset.ataque);
                     animarDano(slotJogador);
                 }
             });
 
-            // Passar o turno
+            // Verifica vitória/derrota rápida
+            if (hpJogador <= 0) alert("Você perdeu! A base foi destruída.");
+            if (hpInimigo <= 0) alert("Vitória! Base inimiga destruída.");
+
+            // Novo Turno
             turno++;
             energiaMax = Math.min(turno, 6);
             energiaAtual = energiaMax;
+            
+            sacarCarta(); // Puxa uma carta nova no início do turno
             atualizarHUD();
+            
             if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
         };
 
-        // Lógica de Arrastar (Pointer Events)
-        cartas.forEach(carta => {
+        // Extraí a lógica de toque para poder plugar nas novas cartas criadas
+        function adicionarEventosArrastar(carta) {
             carta.addEventListener('pointerdown', (e) => {
                 if (carta.classList.contains('disabled')) return;
                 
@@ -301,7 +343,10 @@
 
                 if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
             });
-        });
+        }
+
+        // Aplica o evento na carta inicial que já está no HTML
+        document.querySelectorAll('#mao-jogador .carta').forEach(adicionarEventosArrastar);
 
         document.addEventListener('pointermove', (e) => {
             if (!cartaArrastada) return;
@@ -352,13 +397,16 @@
                 cartaArrastada.style.left = '0';
                 cartaArrastada.style.top = '0';
                 cartaArrastada.classList.remove('dragging');
-                posInicial.parent.insertBefore(cartaArrastada, posInicial.nextSibling);
+                if(posInicial.parent) {
+                    posInicial.parent.insertBefore(cartaArrastada, posInicial.nextSibling);
+                }
                 if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
             }
 
             cartaArrastada = null;
         });
 
+        // Setup inicial
         atualizarHUD();
     </script>
 </body>
